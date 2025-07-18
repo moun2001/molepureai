@@ -1,0 +1,499 @@
+openapi: 3.0.3
+info:
+  title: Drug Interaction Prediction API
+  description: |
+    A machine learning-powered API for predicting drug-drug interaction severity levels.
+    
+    This API uses a trained XGBoost model to analyze drug characteristics and predict
+    interaction severity between multiple drugs, providing clinical recommendations
+    and confidence scores.
+    
+    ## Features
+    - Predict interaction severity (Major, Moderate, Minor)
+    - Analyze multiple drugs simultaneously
+    - Provide confidence scores and clinical recommendations
+    - Support for comprehensive drug characteristics
+    
+    ## Rate Limiting
+    - 100 requests per minute per IP address
+    - Maximum 10 drugs per request
+    - Request timeout: 120 seconds
+    
+  version: 1.0.0
+  contact:
+    name: Drug Interaction API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Development server
+  - url: https://api.druginteractions.example.com
+    description: Production server
+
+paths:
+  /:
+    get:
+      summary: Health check
+      description: Basic health check endpoint that returns server status
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                service: "Drug Interaction Prediction API"
+                version: "1.0.0"
+                timestamp: "2024-01-01T12:00:00.000Z"
+                model_loaded: true
+
+  /health:
+    get:
+      summary: Detailed health check
+      description: Comprehensive health check with component status
+      operationId: detailedHealthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: All components are healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /predict-interactions:
+    post:
+      summary: Predict drug interactions
+      description: |
+        Analyze drug-drug interactions for multiple drugs and return severity predictions.
+        
+        The API will analyze all possible pairs of drugs and return predictions for each pair,
+        sorted by severity level (Major > Moderate > Minor).
+        
+        **Input Requirements:**
+        - Minimum 2 drugs required
+        - Maximum 10 drugs per request
+        - All drug fields are required
+        
+        **Computational Complexity:**
+        For n drugs, the API analyzes n*(n-1)/2 drug pairs:
+        - 2 drugs = 1 pair
+        - 3 drugs = 3 pairs  
+        - 4 drugs = 6 pairs
+        - 5 drugs = 10 pairs
+        
+      operationId: predictInteractions
+      tags:
+        - Predictions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictionRequest'
+            examples:
+              two_drugs:
+                summary: Two drugs example
+                value:
+                  drugs:
+                    - drug_name: "Warfarin"
+                      pharmacodynamic_class: "Anticoagulant"
+                      logp: 2.7
+                      therapeutic_index: "NTI"
+                      transporter_interaction: "Substrate: P-gp"
+                      plasma_protein_binding: 99.0
+                      metabolic_pathways: "Substrate: CYP2C9;CYP3A4"
+                    - drug_name: "Amiodarone"
+                      pharmacodynamic_class: "Antiarrhythmic"
+                      logp: 7.6
+                      therapeutic_index: "NTI"
+                      transporter_interaction: "Substrate: P-gp / Inhibitor: P-gp"
+                      plasma_protein_binding: 96.0
+                      metabolic_pathways: "Substrate: CYP3A4 / Inhibitor: CYP2D6"
+              multiple_drugs:
+                summary: Multiple drugs example
+                value:
+                  drugs:
+                    - drug_name: "Warfarin"
+                      pharmacodynamic_class: "Anticoagulant"
+                      logp: 2.7
+                      therapeutic_index: "NTI"
+                      transporter_interaction: "Substrate: P-gp"
+                      plasma_protein_binding: 99.0
+                      metabolic_pathways: "Substrate: CYP2C9;CYP3A4"
+                    - drug_name: "Amiodarone"
+                      pharmacodynamic_class: "Antiarrhythmic"
+                      logp: 7.6
+                      therapeutic_index: "NTI"
+                      transporter_interaction: "Substrate: P-gp / Inhibitor: P-gp"
+                      plasma_protein_binding: 96.0
+                      metabolic_pathways: "Substrate: CYP3A4 / Inhibitor: CYP2D6"
+                    - drug_name: "Simvastatin"
+                      pharmacodynamic_class: "Statin"
+                      logp: 4.7
+                      therapeutic_index: "Non-NTI"
+                      transporter_interaction: "Substrate: OATP1B1"
+                      plasma_protein_binding: 95.0
+                      metabolic_pathways: "Substrate: CYP3A4"
+      responses:
+        '200':
+          description: Successful prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictionResponse'
+              examples:
+                successful_prediction:
+                  summary: Successful interaction prediction
+                  value:
+                    status: "success"
+                    timestamp: "2024-01-01T12:00:00.000Z"
+                    input_drugs_count: 2
+                    drug_pairs_analyzed: 1
+                    predictions:
+                      - drug_pair:
+                          drug_a:
+                            index: 0
+                            name: "Warfarin"
+                            class: "Anticoagulant"
+                          drug_b:
+                            index: 1
+                            name: "Amiodarone"
+                            class: "Antiarrhythmic"
+                        prediction:
+                          severity: "Moderate"
+                          confidence: 0.961
+                          risk_level: "Medium"
+                        probability_distribution:
+                          Major: 0.035
+                          Moderate: 0.961
+                          Minor: 0.004
+                        clinical_significance: "Moderate clinical significance - Monitor patient closely"
+                        recommendation: "Monitor patient for adverse effects. Consider dose adjustment if needed."
+                    summary:
+                      high_risk_pairs: 0
+                      moderate_risk_pairs: 1
+                      low_risk_pairs: 0
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
+                missing_fields:
+                  summary: Missing required fields
+                  value:
+                    error: "Input validation failed"
+                    status: "error"
+                    details:
+                      - "Drug 1: Missing required field 'logp'"
+                      - "Drug 2: Field 'plasma_protein_binding' must be between 0 and 100"
+                insufficient_drugs:
+                  summary: Insufficient drugs
+                  value:
+                    error: "At least 2 drugs are required for interaction prediction"
+                    status: "error"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/info:
+    get:
+      summary: API information
+      description: Get comprehensive API information and usage guidelines
+      operationId: getApiInfo
+      tags:
+        - Information
+      responses:
+        '200':
+          description: API information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiInfoResponse'
+
+components:
+  schemas:
+    Drug:
+      type: object
+      required:
+        - drug_name
+        - pharmacodynamic_class
+        - logp
+        - therapeutic_index
+        - transporter_interaction
+        - plasma_protein_binding
+        - metabolic_pathways
+      properties:
+        drug_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Name of the drug
+          example: "Warfarin"
+        pharmacodynamic_class:
+          type: string
+          description: Pharmacodynamic class of the drug
+          example: "Anticoagulant"
+        logp:
+          type: number
+          minimum: -10.0
+          maximum: 15.0
+          description: Lipophilicity (LogP) value
+          example: 2.7
+        therapeutic_index:
+          type: string
+          enum: ["NTI", "Non-NTI"]
+          description: Therapeutic index classification
+          example: "NTI"
+        transporter_interaction:
+          type: string
+          description: Transporter interaction information
+          example: "Substrate: P-gp"
+        plasma_protein_binding:
+          type: number
+          minimum: 0.0
+          maximum: 100.0
+          description: Plasma protein binding percentage
+          example: 99.0
+        metabolic_pathways:
+          type: string
+          description: Metabolic pathway information
+          example: "Substrate: CYP2C9;CYP3A4"
+
+    PredictionRequest:
+      type: object
+      required:
+        - drugs
+      properties:
+        drugs:
+          type: array
+          minItems: 2
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Drug'
+          description: Array of drugs to analyze for interactions
+
+    DrugPair:
+      type: object
+      properties:
+        drug_a:
+          type: object
+          properties:
+            index:
+              type: integer
+              description: Index of drug A in the original request
+            name:
+              type: string
+              description: Name of drug A
+            class:
+              type: string
+              description: Pharmacodynamic class of drug A
+        drug_b:
+          type: object
+          properties:
+            index:
+              type: integer
+              description: Index of drug B in the original request
+            name:
+              type: string
+              description: Name of drug B
+            class:
+              type: string
+              description: Pharmacodynamic class of drug B
+
+    Prediction:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: ["Major", "Moderate", "Minor"]
+          description: Predicted interaction severity
+        confidence:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: Confidence score for the prediction
+        risk_level:
+          type: string
+          enum: ["High", "Medium", "Low"]
+          description: Risk level classification
+
+    InteractionPrediction:
+      type: object
+      properties:
+        drug_pair:
+          $ref: '#/components/schemas/DrugPair'
+        prediction:
+          $ref: '#/components/schemas/Prediction'
+        probability_distribution:
+          type: object
+          additionalProperties:
+            type: number
+          description: Probability distribution across all severity levels
+        clinical_significance:
+          type: string
+          description: Clinical significance description
+        recommendation:
+          type: string
+          description: Clinical recommendation
+
+    PredictionSummary:
+      type: object
+      properties:
+        high_risk_pairs:
+          type: integer
+          description: Number of high-risk (Major) interactions
+        moderate_risk_pairs:
+          type: integer
+          description: Number of moderate-risk interactions
+        low_risk_pairs:
+          type: integer
+          description: Number of low-risk (Minor) interactions
+
+    PredictionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["success"]
+          description: Response status
+        timestamp:
+          type: string
+          format: date-time
+          description: Response timestamp
+        input_drugs_count:
+          type: integer
+          description: Number of drugs in the input
+        drug_pairs_analyzed:
+          type: integer
+          description: Number of drug pairs analyzed
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InteractionPrediction'
+          description: Array of interaction predictions
+        summary:
+          $ref: '#/components/schemas/PredictionSummary'
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["healthy"]
+        service:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        model_loaded:
+          type: boolean
+
+    DetailedHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "unhealthy"]
+        service:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          properties:
+            model_loaded:
+              type: boolean
+            preprocessor_ready:
+              type: boolean
+            predictor_ready:
+              type: boolean
+            validator_ready:
+              type: boolean
+        uptime:
+          type: string
+          format: date-time
+
+    ApiInfoResponse:
+      type: object
+      properties:
+        api_name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        endpoints:
+          type: object
+        supported_severity_levels:
+          type: array
+          items:
+            type: string
+        required_drug_fields:
+          type: array
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        status:
+          type: string
+          enum: ["error"]
+        message:
+          type: string
+          description: Detailed error message
+        timestamp:
+          type: string
+          format: date-time
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        status:
+          type: string
+          enum: ["error"]
+        details:
+          type: array
+          items:
+            type: string
+          description: List of validation errors
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Predictions
+    description: Drug interaction prediction endpoints
+  - name: Information
+    description: API information endpoints
